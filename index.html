@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Sphere viewer</title>
+    <meta charset="UTF-8">
+</head>
+
+<body style="background-color: black">
+    <canvas id='canvas'></canvas>
+    <script src="./gl-matrix.js"></script>
+    <script>
+        /**
+         * Produce random angle from range [0, 360).
+         *
+         * @return { Number } - degrees in range [0, 360).
+         */
+        function random_angle() {
+            return Math.random() * 360;
+        }
+
+        /**
+         * Produce x, y and z cordinates of point on sphere with given radius,
+         * alpha and beta specifies it's location.
+         *
+         * alpha is angle from x to y axis
+         * beta is angle from z axis to x-y plane
+         */
+        function point_on_sphere(radius, alpha, beta) {
+            x = radius * Math.cos(beta) * Math.cos(alpha);
+            y = radius * Math.sin(beta);
+            z = radius * Math.cos(beta) * Math.sin(alpha);
+
+            return [x, y, z];
+        }
+
+        /**
+         * Generate cordinates of random points on sphere.
+         * @param { Number } radius - sphere radius.
+         * @param { Integer } number_of_points - number of generated cordinates.
+         * 
+         * @return { Array } - Array of length 3 * number_of_points
+         *                     Array[i*3]     - x cordinate of i-th point
+         *                     Array[i*3 + 1] - y cordinate of i-th point
+         *                     Array[i*3 + 2] - z cordinate of i-th point
+         *                     for 0 <= i < number_of_points.
+         */
+        function generate_points_on_sphere(radius, number_of_points) {
+            let vertices = [];
+            for (let i = 0; i < number_of_points; i++) {
+                const alpha = random_angle();
+                const beta = random_angle();
+                [x, y, z] = point_on_sphere(radius, alpha, beta);
+                vertices.push(x, y, z);
+            }
+
+            return vertices;
+        }
+
+
+        /**
+         * Update view matrix, camera position and center 
+         * so that camera is now moved by position_increment and is looking in same direction
+         */
+        function update_view_matrix(view_matrix, camera_position, center, up_vector, looking_direction, position_increment) {
+            glMatrix.vec3.add(camera_position, camera_position, position_increment);
+            glMatrix.vec3.add(center, camera_position, looking_direction);
+            glMatrix.mat4.lookAt(view_matrix, camera_position, center, up_vector);
+        }
+        
+        /**
+         * Update given matrix to R(angle, axis) * matrix,
+         * where R(angle, axis) is matrix representing rotation about given axis for given angle.
+         */
+        function rotate_matrix(matrix, angle, axis) {
+            const rotation = glMatrix.mat4.create();
+            glMatrix.mat4.fromRotation(rotation, angle, axis);
+            glMatrix.mat4.mul(matrix, rotation, model_matrix);
+        }
+
+    </script>
+    <script>
+        /* Load WebGL2 */
+        const canvas = document.getElementById('canvas');
+        const gl = canvas.getContext('webgl2');
+
+        /* Configure canvas and gl viewport */
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        void gl.viewport(0, 0, canvas.width, canvas.height);
+
+
+        /* 
+         * Create points on sphere, 
+         * and send them to webgl buffers
+         */
+        const radius = 1;
+        const number_of_points = 40000;
+
+        const points_on_sphere = generate_points_on_sphere(radius, number_of_points);
+
+        const points_buffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, points_buffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(points_on_sphere), gl.STATIC_DRAW);
+
+
+        /* Write shaders and turn them into program */
+        const vertex_shader_source =
+            `#version 300 es
+
+            uniform mat4 model_matrix;
+            uniform mat4 view_matrix;
+            uniform mat4 projection_matrix;
+
+            in vec3 position;
+            out vec3 fragment_position;
+            
+            void main(void)
+            {
+                mat4 net_transformation = projection_matrix * view_matrix * model_matrix;
+
+                gl_Position = net_transformation * vec4(position, 1);
+            
+                fragment_position = position;
+            
+                gl_PointSize = 1.0;
+            }
+        `;
+        const vertex_shader = gl.createShader(gl.VERTEX_SHADER);
+        gl.shaderSource(vertex_shader, vertex_shader_source);
+        gl.compileShader(vertex_shader);
+        console.log('vertex shader info log: ', gl.getShaderInfoLog(vertex_shader));
+
+        const fragment_shader_source =
+            `#version 300 es
+            
+            precision mediump float;
+
+            in vec3 fragment_position;
+            out vec4 FragColor;
+
+            void main(void)
+            {
+                FragColor = vec4(0, 0, 1.0, 1.0);
+                FragColor.r = (fragment_position.x +1.0) * (fragment_position.x +1.0) * (fragment_position.x +1.0) / 8.0;
+                FragColor.g  = (fragment_position.y + 1.0 ) * (fragment_position.y + 1.0 ) *  (fragment_position.y + 1.0 ) / 8.0;
+            }
+         `;
+        const fragment_shader = gl.createShader(gl.FRAGMENT_SHADER);
+        gl.shaderSource(fragment_shader, fragment_shader_source);
+        gl.compileShader(fragment_shader);
+        console.log('fragment shader info log: ', gl.getShaderInfoLog(fragment_shader));
+
+        const program = gl.createProgram();
+        gl.attachShader(program, vertex_shader);
+        gl.attachShader(program, fragment_shader);
+        gl.linkProgram(program);
+        console.log('Program info log: ', gl.getProgramInfoLog(program));
+
+        /* Define model matrix */
+        const model_matrix = glMatrix.mat4.create();
+
+        /* 
+         * Define camera position, direction at which it is looking, its orieantation 
+         * and create view
+         */
+        let camera_position = glMatrix.vec3.fromValues(0, 0, 2.2);
+        let looking_direction = glMatrix.vec3.fromValues(0, 0, -1);
+        let center = glMatrix.vec3.create();
+        glMatrix.vec3.add(center, camera_position, looking_direction);
+        let up_vector = glMatrix.vec3.fromValues(0, 1, 0);
+
+        let view_matrix = glMatrix.mat4.create();
+        glMatrix.mat4.lookAt(view_matrix, camera_position, center, up_vector);
+
+
+        /*
+         * Define projection matrix and it's paramenters. 
+         */
+        let near = 0.001;
+        let far = 45;
+        let fovy = 65 * Math.PI / 180;
+        let aspect = canvas.width / canvas.height;
+
+        let projection_matrix = glMatrix.mat4.create();
+        glMatrix.mat4.perspective(projection_matrix, fovy, aspect, near, far);
+
+        /* Make vertex specification and store it into vertex array object */
+        const vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+
+        const position_location = gl.getAttribLocation(program, 'position');
+        gl.bindBuffer(gl.ARRAY_BUFFER, points_buffer);
+        gl.vertexAttribPointer(position_location, 3, gl.FLOAT, false, 0, 0);
+
+
+
+        /* Bind program, enable vertex attributes and 'connect' uniforms to program */
+        gl.useProgram(program);
+
+        gl.enableVertexAttribArray(position_location);
+
+        const model_matrix_location = gl.getUniformLocation(program, 'model_matrix');
+        gl.uniformMatrix4fv(model_matrix_location, false, model_matrix);
+
+        const view_matrix_location = gl.getUniformLocation(program, 'view_matrix');
+        gl.uniformMatrix4fv(view_matrix_location, false, view_matrix);
+
+        const projection_matrix_location = gl.getUniformLocation(program, 'projection_matrix');
+        gl.uniformMatrix4fv(projection_matrix_location, false, projection_matrix);
+
+        /* Enable depth test and draw points */
+        gl.enable(gl.DEPTH_TEST)
+        gl.drawArrays(gl.POINTS, 0, number_of_points);
+
+        /* Event handling */
+        window.addEventListener('resize', (e) => {
+            // update canvas width, height and set new viewport
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            void gl.viewport(0, 0, canvas.width, canvas.height);
+
+            // update projection matrix
+            aspect = canvas.width / canvas.height;
+            glMatrix.mat4.perspective(projection_matrix, fovy, aspect, near, far);
+            
+            // send projectiom matrix to program
+            gl.uniformMatrix4fv(projection_matrix_location, false, projection_matrix);
+
+            // draw
+            gl.drawArrays(gl.POINTS, 0, number_of_points);
+        });
+
+
+        window.addEventListener('keydown', (event) => {
+            switch (event.key) {
+                case '+': {
+                    event.preventDefault();
+
+                    const position_increment = glMatrix.vec3.fromValues(0, 0, -0.013);
+                    update_view_matrix(view_matrix, camera_position, center, up_vector, looking_direction, position_increment);
+
+                    gl.uniformMatrix4fv(view_matrix_location, false, view_matrix);
+
+                    gl.drawArrays(gl.POINTS, 0, number_of_points);
+                    break;
+                }
+                case '-': {
+                    event.preventDefault();
+
+                    const position_increment = glMatrix.vec3.fromValues(0, 0, 0.013);
+                    update_view_matrix(view_matrix, camera_position, center, up_vector, looking_direction, position_increment);
+
+                    gl.uniformMatrix4fv(view_matrix_location, false, view_matrix);
+                    gl.drawArrays(gl.POINTS, 0, number_of_points);
+                    break;
+                }
+                case 'ArrowUp': {
+                    event.preventDefault();
+
+                    rotate_matrix(model_matrix, Math.PI / 180 * -0.5, [1, 0, 0])
+
+                    gl.uniformMatrix4fv(model_matrix_location, false, model_matrix);
+                    gl.drawArrays(gl.POINTS, 0, number_of_points);
+                    break;
+                }
+                case 'ArrowDown': {
+                    event.preventDefault();
+
+                    rotate_matrix(model_matrix, Math.PI / 180 * 0.5, [1, 0, 0])
+
+                    gl.uniformMatrix4fv(model_matrix_location, false, model_matrix);
+                    gl.drawArrays(gl.POINTS, 0, number_of_points);
+                    break;  
+                }
+                case 'ArrowLeft': {
+                    event.preventDefault();
+
+                    rotate_matrix(model_matrix, Math.PI / 180 * -0.5, [0, 1, 0])
+
+                    gl.uniformMatrix4fv(model_matrix_location, false, model_matrix);
+                    gl.drawArrays(gl.POINTS, 0, number_of_points);
+                    break;
+                }
+                case 'ArrowRight': {
+                    event.preventDefault();
+
+                    rotate_matrix(model_matrix, Math.PI / 180 * 0.5, [0, 1, 0])
+
+                    gl.uniformMatrix4fv(model_matrix_location, false, model_matrix);
+                    gl.drawArrays(gl.POINTS, 0, number_of_points);
+                    break;
+                }
+            }
+        });
+
+        /* Display commands for interaction with sphere */
+        alert(`Use arrow keys to rotate sphere and + and - to move forward and backward.`);
+    </script>
+</body>
+
+</html>
