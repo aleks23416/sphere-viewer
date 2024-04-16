@@ -6,25 +6,31 @@
     <meta charset="UTF-8">
 </head>
 
-<body style="background-color: black">
-    <canvas id='canvas'></canvas>
+<body style="background-color: black; margin: 0;">
+    <canvas id='canvas' style="display: block;"></canvas>
     <script src="./gl-matrix.js"></script>
     <script>
         /**
-         * Produce random angle from range [0, 360).
+         * Produce random angle in radians from range [0, 2*Math.PI).
          *
-         * @return { Number } - degrees in range [0, 360).
+         * @return { Number }
          */
         function random_angle() {
-            return Math.random() * 360;
+            return Math.random() * 2 * Math.PI;
         }
 
         /**
-         * Produce x, y and z cordinates of point on sphere with given radius,
-         * alpha and beta specifies it's location.
+         * Produce x, y and z cordinates of point on sphere with given radius.
+         * Alpha and beta specifies point's location.
          *
-         * alpha is angle from x to y axis
-         * beta is angle from z axis to x-y plane
+         * @param { Number } radius 
+         * @param { Number } alpha - angle in radians from x to y axis
+         * @param { Number } beta - angle in radians from z axis to x-y plane
+         * 
+         * @return { Array } - Array of length 3
+         *                     Array[i]     - x cordinate of a point
+         *                     Array[i + 1] - y cordinate of a point
+         *                     Array[i + 2] - z cordinate of a point
          */
         function point_on_sphere(radius, alpha, beta) {
             x = radius * Math.cos(beta) * Math.cos(alpha);
@@ -35,9 +41,9 @@
         }
 
         /**
-         * Generate cordinates of random points on sphere.
+         * Generate random points on sphere.
          * @param { Number } radius - sphere radius.
-         * @param { Integer } number_of_points - number of generated cordinates.
+         * @param { Integer } number_of_points - number of generated points.
          * 
          * @return { Array } - Array of length 3 * number_of_points
          *                     Array[i*3]     - x cordinate of i-th point
